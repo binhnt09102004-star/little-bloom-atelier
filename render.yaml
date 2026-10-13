@@ -1,0 +1,13 @@
+﻿services:
+  - type: static
+    name: little-bloom-atelier
+    plan: free
+    publishPath: .
+    pullRequestPreviewsEnabled: true
+    headers:
+      - path: /*
+        name: Access-Control-Allow-Origin
+        value: "*"
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=86400

@@ -1,0 +1,19 @@
+﻿{
+  "name": "little-bloom",
+  "version": "1.0.0",
+  "description": "Little Bloom Haute Couture Atelier - Luxury 360 Baby Romper Experience",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "echo \"Ready for deployment\""
+  },
+  "keywords": [
+    "luxury",
+    "gucci",
+    "romper",
+    "threejs",
+    "gsap"
+  ],
+  "author": "Little Bloom",
+  "license": "ISC"
+}
