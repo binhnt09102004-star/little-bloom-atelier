@@ -1,21 +1,46 @@
-﻿// Little Bloom - Haute Couture 3D Garment Atelier (Three.js WebGL Real-time Mesh Engine)
-// Full 360° Horizontal Orbit, Vertical Tilt, Zoom, Physical Mesh Curvature, Dynamic Lights & 3D Hotspots
+﻿// Little Bloom - Ultra-Realistic Haute Couture 3D Baby Romper Virtual Atelier
+// 72-Frame Cinema-Grade Photogrammetric 360 Turntable Engine (5.0° Per Frame Precision)
+// GSAP 3 Observer, PointerCapture Physics, Kinetic Inertia, Laser 3D Scan & Macro Dolly-Zoom
 
 class Romper3DViewer {
   constructor(containerId) {
     this.container = document.getElementById(containerId);
     if (!this.container) return;
 
-    this.width = this.container.clientWidth || 500;
-    this.height = this.container.clientHeight || 500;
+    // 72 Cinema-Grade Studio Frames (5.0° Per Frame for 100% Seamless Persistence of Vision)
+    this.totalFrames = 72;
+    this.degreesPerFrame = 360 / this.totalFrames; // 5.0°
+    this.frameUrls = [];
+    for (let i = 0; i < this.totalFrames; i++) {
+      this.frameUrls.push(`assets/spin360/72frames/frame_${i}.jpg`);
+    }
+
+    this.loadedImages = new Array(this.totalFrames);
+    this.imagesLoadedCount = 0;
+    this.lastDrawnIndex = -1;
+    this.lastRoundedAngle = -1;
+
+    // Continuous Physics State
+    this.currentAngle = 0; // Current rendered angle (smooth lerped)
+    this.targetAngle = 0;  // Target angle (driven by drag, auto-rotate, or preset)
+    this.sensitivity = 0.75; // Responsive degrees per mouse pixel
 
     this.isAutoRotate = true;
     this.rotateSpeed = 1.0;
     this.currentLighting = 'studio';
-    this.activeHotspotId = null;
-    this.isZoomed = false;
 
-    // View Angle Names
+    // Drag Physics Tracking
+    this.isDragging = false;
+    this.dragStartX = 0;
+    this.dragStartAngle = 0;
+    this.lastMoveTime = 0;
+    this.lastMoveX = 0;
+    this.velocity = 0;
+
+    this.isZoomed = false;
+    this.activeHotspotId = null;
+
+    // Angle Names for Lookbook View Badge
     this.angleNames = {
       0: '정면 룩북 (FRONT VIEW)',
       45: '우전측면 (3/4 RIGHT)',
@@ -27,7 +52,7 @@ class Romper3DViewer {
       315: '좌전측면 (3/4 FRONT-LEFT)'
     };
 
-    // 3D Hotspot Data with Exact 3D Model Coordinates
+    // Haute Couture Hotspots
     this.hotspots = [
       {
         id: 'collar',
@@ -36,104 +61,169 @@ class Romper3DViewer {
         sub: 'COMFORT CREW NECKLINE',
         desc: '민감한 아기 목둘레를 부드럽게 감싸는 1x1 립 조직 마감. 목 뒤 택(Tag)은 외부에 배치하여 피부 마찰을 원천 차단했습니다.',
         specs: ['100% GOTS 오가닉 코튼', '무자극 플랫록 스티치', '외부 봉제 케어 라벨'],
-        pos: new THREE.Vector3(0, 0.82, 0.22),
-        normal: new THREE.Vector3(0, 0.2, 1).normalize(),
-        targetCam: new THREE.Vector3(0, 0.85, 1.8),
-        targetLook: new THREE.Vector3(0, 0.78, 0.1)
+        x: 50,
+        y: 19,
+        zoomOrigin: '50% 19%',
+        zoomScale: 2.4,
+        targetAngle: 0,
+        lastVisible: null
       },
       {
         id: 'badge',
         num: '02',
-        title: '선인장 시그니처 엠보싱 배지',
-        sub: 'SIGNATURE EMBOSSED BADGE',
-        desc: '자연에서 영감받은 미니멀하고 사랑스러운 시그니처 선인장 모티브. 친환경 무독성 천연 염료로 아기 입에 닿아도 안전합니다.',
-        specs: ['친환경 무독성 소재', '소프트 라운딩 엣지', '입체 엠보싱 공법'],
-        pos: new THREE.Vector3(0.24, 0.58, 0.26),
-        normal: new THREE.Vector3(0.1, 0, 1).normalize(),
-        targetCam: new THREE.Vector3(0.3, 0.6, 1.6),
-        targetLook: new THREE.Vector3(0.24, 0.58, 0.2)
+        title: '시그니처 선인장 엠보싱 배지',
+        sub: 'MINIMALIST ATELIER CREST',
+        desc: '왼쪽 가슴에 미니멀하게 새겨진 리틀블룸 시그니처 원형 엠블럼. 무독성 친환경 염료와 실로 수놓아 아이 입에 닿아도 안전합니다.',
+        specs: ['무연 자수 스레드', '친환경 에코 패치', '핸드메이드 미니멀 디자인'],
+        x: 58,
+        y: 28,
+        zoomOrigin: '58% 28%',
+        zoomScale: 2.6,
+        targetAngle: 0,
+        lastVisible: null
       },
       {
         id: 'snaps',
         num: '03',
-        title: '이지 체인지 가랑이 스냅 버튼',
-        sub: 'EASY-CHANGE DIAPER SNAPS',
-        desc: '기저귀 교체 시 옷을 다 벗기지 않고 밑단만 개폐할 수 있는 인체공학 스냅 구조. 알레르기 안심 무니켈 YKK 스냅을 적용했습니다.',
-        specs: ['YKK 정품 무니켈 스냅', '밑단 풀 오픈 방식', '기저귀 여유 입체 패턴'],
-        pos: new THREE.Vector3(0, -0.52, 0.18),
-        normal: new THREE.Vector3(0, -0.2, 1).normalize(),
-        targetCam: new THREE.Vector3(0, -0.5, 1.8),
-        targetLook: new THREE.Vector3(0, -0.55, 0.1)
+        title: '안쪽 다리 무니켈 이지 스냅',
+        sub: 'ERGONOMIC DIAPER SNAPS',
+        desc: '아이를 눕힌 상태에서 빠르고 편안하게 기저귀를 교체할 수 있는 인체공학 위치의 스냅 구조. 알레르기 안심 YKK 무니켈 스냅을 적용했습니다.',
+        specs: ['YKK 무니켈(Nickel-Free) 스냅', '5구 인체공학 곡선 배치', '간편 기저귀 퀵 오픈'],
+        x: 50,
+        y: 67,
+        zoomOrigin: '50% 67%',
+        zoomScale: 2.4,
+        targetAngle: 0,
+        lastVisible: null
       },
       {
         id: 'cuffs',
         num: '04',
-        title: '2-WAY 턴업 롤업 밴딩 소매 & 발목',
-        sub: '2-WAY EXTENDABLE CUFFS',
-        desc: '아기 성장에 맞춰 소매와 발목을 접거나 펼쳐 입히는 2단계 확장 시스템. 바람을 막아주고 체온을 포근하게 유지합니다.',
-        specs: ['무압박 신축 립 밴드', '성장 맞춤 2-Way 확장', '흘러내림 방지 설계'],
-        pos: new THREE.Vector3(-0.92, 0.22, 0.14),
-        normal: new THREE.Vector3(-0.8, 0, 0.6).normalize(),
-        targetCam: new THREE.Vector3(-1.0, 0.25, 1.7),
-        targetLook: new THREE.Vector3(-0.85, 0.2, 0.1)
+        title: '2단 롤업 스마트 커프스',
+        sub: '2-STAGE FOLDABLE CUFFS',
+        desc: '아이의 빠른 성장에 맞추어 소매와 발목을 접거나 펴서 착용 가능한 2단 롤업 시스템. 찬바람을 막아주고 체온을 일정하게 유지합니다.',
+        specs: ['2단계 길이 조절', '신축성 우수한 립 밴딩', '체온 보호 윈드블록'],
+        x: 23,
+        y: 45,
+        zoomOrigin: '23% 45%',
+        zoomScale: 2.5,
+        targetAngle: 45,
+        lastVisible: null
       },
       {
         id: 'backtag',
         num: '05',
-        title: '외장형 럭셔리 라벨 & 시그니처 헴',
-        sub: 'EXTERNAL ATELIER LABEL',
-        desc: '옷 안쪽에 상처가 나지 않도록 외부에 봉제된 아뜰리에 시그니처 라벨. 매끄러운 오가닉 원단 결이 돋보이는 후면 실루엣입니다.',
-        specs: ['피부 자극 제로 외장 라벨', '프리미엄 봉제 마감', '등 결림 없는 플랫 디자인'],
-        pos: new THREE.Vector3(0, 0.80, -0.22),
-        normal: new THREE.Vector3(0, 0, -1).normalize(),
-        targetCam: new THREE.Vector3(0, 0.85, -1.8),
-        targetLook: new THREE.Vector3(0, 0.78, -0.1)
+        title: '오가닉 코튼 백 라벨',
+        sub: 'AUTHENTIC ORGANIC EMBLEM',
+        desc: '등 상단에 섬세하게 부착된 오가닉 인증 실크 패치. 고급스러운 아틀리에 감성을 드러내는 시그니처 디테일입니다.',
+        specs: ['친환경 패브릭 라벨', '피부 무접촉 겉감 부착', 'GOTS 공식 인증 로고'],
+        x: 50,
+        y: 20,
+        zoomOrigin: '50% 20%',
+        zoomScale: 2.4,
+        targetAngle: 180,
+        lastVisible: null
       }
     ];
 
-    this.init();
+    this.initDOM();
+    this.preloadAllFrames();
+    this.setupInteractions();
+    this.startPhysicsLoop();
   }
 
-  init() {
+  initDOM() {
     this.container.innerHTML = '';
+    this.container.style.position = 'relative';
+    this.container.style.overflow = 'hidden';
+    this.container.style.userSelect = 'none';
+    this.container.style.backgroundColor = '#F9F8F5';
+    this.container.style.touchAction = 'none';
 
-    // 1. Build Overlay UI (Controls, Scanner, Bezel Dial, Spec Placard)
-    this.buildUI();
+    // 1. Studio Lighting Atmosphere Layer
+    this.lightAtmosphere = document.createElement('div');
+    this.lightAtmosphere.className = 'studio-lighting-layer lighting-studio';
+    this.container.appendChild(this.lightAtmosphere);
 
-    // 2. Initialize Three.js WebGL Scene
-    this.initThree();
-
-    // 3. Build 3D Mesh & Materials
-    this.build3DGarment();
-
-    // 4. Create 3D Hotspot DOM Elements
-    this.initHotspots();
-
-    // 5. Setup Window Events
-    window.addEventListener('resize', () => this.onResize());
-
-    // 6. Trigger 3D Scan Laser Effect
-    this.trigger3DScanAnimation();
-
-    // 7. Start Render Loop
-    this.animate();
-  }
-
-  buildUI() {
-    // 3D Scanner Overlay
+    // 2. 3D Laser Scan Sweep Overlay
     this.scannerOverlay = document.createElement('div');
     this.scannerOverlay.className = 'three-scanner-overlay';
     this.scannerOverlay.innerHTML = `
       <div class="scanner-beam"></div>
       <div class="scanner-data-box">
         <span class="scanner-dot"></span>
-        <span class="scanner-status">✦ 3D PHOTOGRAMMETRIC MESH SCANNING</span>
-        <span class="scanner-pct" id="scannerPct">0%</span>
+        <span class="scanner-status">✦ 3D PHOTOGRAMMETRIC RECONSTRUCTION</span>
+        <span class="scanner-pct" id="scannerPct">100%</span>
       </div>
     `;
     this.container.appendChild(this.scannerOverlay);
 
-    // Floating Glass Controls Bar
+    // 3. Main 360 Turntable Viewport Stage
+    this.stage = document.createElement('div');
+    this.stage.className = 'atelier-360-stage';
+    this.stage.style.position = 'relative';
+    this.stage.style.width = '100%';
+    this.stage.style.height = '100%';
+    this.stage.style.display = 'flex';
+    this.stage.style.alignItems = 'center';
+    this.stage.style.justifyContent = 'center';
+    this.stage.style.transformOrigin = '50% 50%';
+    this.stage.style.willChange = 'transform';
+    this.stage.style.touchAction = 'none';
+    this.container.appendChild(this.stage);
+
+    // 4. High-Performance Display Canvas
+    this.canvas = document.createElement('canvas');
+    this.canvas.className = 'atelier-360-canvas';
+    this.canvas.width = 1024;
+    this.canvas.height = 1024;
+    this.canvas.style.width = '100%';
+    this.canvas.style.height = '100%';
+    this.canvas.style.objectFit = 'contain';
+    this.canvas.style.cursor = 'grab';
+    this.canvas.style.willChange = 'filter';
+    this.canvas.style.touchAction = 'none';
+    this.ctx = this.canvas.getContext('2d', { alpha: false });
+    this.stage.appendChild(this.canvas);
+
+    // 5. Hotspot Layer
+    this.hotspotLayer = document.createElement('div');
+    this.hotspotLayer.className = 'atelier-hotspot-layer';
+    this.hotspotLayer.style.position = 'absolute';
+    this.hotspotLayer.style.top = '0';
+    this.hotspotLayer.style.left = '0';
+    this.hotspotLayer.style.width = '100%';
+    this.hotspotLayer.style.height = '100%';
+    this.hotspotLayer.style.pointerEvents = 'none';
+    this.stage.appendChild(this.hotspotLayer);
+
+    // Render Hotspot Pins
+    this.hotspotElements = {};
+    this.hotspots.forEach(hp => {
+      const pin = document.createElement('div');
+      pin.className = 'haute-jewelry-hotspot';
+      pin.id = `hotspot-${hp.id}`;
+      pin.style.left = `${hp.x}%`;
+      pin.style.top = `${hp.y}%`;
+      pin.style.pointerEvents = 'auto';
+
+      pin.innerHTML = `
+        <div class="jewelry-ring"></div>
+        <div class="jewelry-core"></div>
+        <div class="jewelry-radar"></div>
+        <span class="jewelry-number">${hp.num}</span>
+      `;
+
+      pin.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.focusOnHotspot(hp);
+      });
+
+      this.hotspotLayer.appendChild(pin);
+      this.hotspotElements[hp.id] = pin;
+    });
+
+    // 6. Floating Controls Bar (Black Glassmorphism Pill)
     this.controlsBar = document.createElement('div');
     this.controlsBar.className = 'three-controls-bar';
     this.controlsBar.innerHTML = `
@@ -150,30 +240,53 @@ class Romper3DViewer {
     `;
     this.container.appendChild(this.controlsBar);
 
-    // Bottom Swiss Precision Dial
-    this.dialContainer = document.createElement('div');
-    this.dialContainer.className = 'three-bezel-container';
-    this.dialContainer.innerHTML = `
-      <div class="bezel-track-wrap">
-        <div class="bezel-dial-header">
-          <span class="bezel-title">✦ 3D PRECISION ORBIT DIAL</span>
-          <span class="bezel-value" id="bezelValueText">0°</span>
+    this.angleBadgeText = this.controlsBar.querySelector('#threeAngleText');
+    this.btnRotate = this.controlsBar.querySelector('#btnThreeRotate');
+    this.btnSpeed = this.controlsBar.querySelector('#btnThreeSpeed');
+    this.btnLight = this.controlsBar.querySelector('#btnThreeLighting');
+    this.btnReset = this.controlsBar.querySelector('#btnThreeReset');
+
+    // 7. Swiss Watch Precision Bezel Scrubber Module
+    this.scrubberModule = document.createElement('div');
+    this.scrubberModule.className = 'three-scrubber-bar';
+    this.scrubberModule.innerHTML = `
+      <div class="scrubber-header">
+        <div class="dial-title-wrap">
+          <span class="gold-sparkle">✦</span>
+          <span class="scrubber-label">360° PRECISION DIAL</span>
+          <span class="scrubber-val" id="scrubberDegDisplay">0°</span>
         </div>
-        <div class="bezel-ticks-track" id="bezelTrack">
-          <!-- Dial ticks generated dynamically -->
+        <div class="quick-angle-presets">
+          <button class="preset-angle-btn active" data-angle="0">0° 정면</button>
+          <button class="preset-angle-btn" data-angle="90">90° 우측</button>
+          <button class="preset-angle-btn" data-angle="180">180° 후면</button>
+          <button class="preset-angle-btn" data-angle="270">270° 좌측</button>
         </div>
-        <div class="bezel-cursor-needle"></div>
+        <span class="scrubber-view-badge" id="scrubberViewBadge">정면 룩북 (0°)</span>
       </div>
-      <div class="bezel-presets-row">
-        <button class="bezel-preset-btn active" data-deg="0">0° 정면</button>
-        <button class="bezel-preset-btn" data-deg="90">90° 우측</button>
-        <button class="bezel-preset-btn" data-deg="180">180° 후면</button>
-        <button class="bezel-preset-btn" data-deg="270">270° 좌측</button>
+      <div class="slider-track-wrap">
+        <input type="range" class="scrubber-slider" id="scrubberRange" min="0" max="360" step="0.5" value="0">
+        <div class="dial-tick-marks">
+          <span>0°</span>
+          <span>45°</span>
+          <span>90°</span>
+          <span>135°</span>
+          <span>180°</span>
+          <span>225°</span>
+          <span>270°</span>
+          <span>315°</span>
+          <span>360°</span>
+        </div>
       </div>
     `;
-    this.container.appendChild(this.dialContainer);
+    this.container.appendChild(this.scrubberModule);
 
-    // Haute Couture Specimen Placard
+    this.scrubberInput = this.scrubberModule.querySelector('#scrubberRange');
+    this.scrubberDisplay = this.scrubberModule.querySelector('#scrubberDegDisplay');
+    this.scrubberViewBadge = this.scrubberModule.querySelector('#scrubberViewBadge');
+    this.presetBtns = this.scrubberModule.querySelectorAll('.preset-angle-btn');
+
+    // 8. Haute Couture Specimen Placard
     this.placard = document.createElement('div');
     this.placard.className = 'haute-specimen-placard';
     this.placard.id = 'hautePlacard';
@@ -187,452 +300,38 @@ class Romper3DViewer {
         <h4 class="placard-title" id="placardTitle">무자극 라운드 넥 & 오가닉 마감</h4>
         <p class="placard-sub" id="placardSub">COMFORT CREW NECKLINE</p>
         <p class="placard-desc" id="placardDesc">민감한 아기 목둘레를 부드럽게 감싸는 1x1 립 조직 마감.</p>
-        <div class="placard-specs-list" id="placardSpecs"></div>
+        <ul class="placard-specs-list" id="placardSpecs"></ul>
         <div class="placard-footer-hint">⟲ 빈 공간을 클릭하면 전체 시점으로 복귀합니다.</div>
       </div>
     `;
     this.container.appendChild(this.placard);
 
-    // Generate Swiss Bezel Dial Ticks
-    this.renderBezelTicks();
+    this.btnPlacardClose = this.placard.querySelector('#placardCloseBtn');
 
-    // Bind Controls UI Events
-    this.bindControlsEvents();
+    // Trigger Laser Scan Sweep Animation
+    this.triggerLaserScan();
   }
 
-  renderBezelTicks() {
-    const track = this.dialContainer.querySelector('#bezelTrack');
-    if (!track) return;
-    let ticksHtml = '';
-    for (let deg = 0; deg <= 360; deg += 5) {
-      const isMajor = deg % 45 === 0;
-      const isMedium = deg % 15 === 0 && !isMajor;
-      const cls = isMajor ? 'major' : isMedium ? 'medium' : 'minor';
-      ticksHtml += `
-        <div class="bezel-tick ${cls}" data-deg="${deg}">
-          ${isMajor ? `<span class="tick-label">${deg}°</span>` : ''}
-        </div>
-      `;
-    }
-    track.innerHTML = ticksHtml;
-  }
-
-  initThree() {
-    this.scene = new THREE.Scene();
-
-    // Camera
-    this.camera = new THREE.PerspectiveCamera(40, this.width / this.height, 0.1, 100);
-    this.defaultCamPos = new THREE.Vector3(0, 0, 4.2);
-    this.defaultTarget = new THREE.Vector3(0, 0, 0);
-    this.camera.position.copy(this.defaultCamPos);
-
-    // Renderer
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: true,
-      powerPreference: 'high-performance'
-    });
-    this.renderer.setSize(this.width, this.height);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.08;
-    this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-
-    this.container.appendChild(this.renderer.domElement);
-
-    // OrbitControls
-    this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
-    this.controls.enableDamping = true;
-    this.controls.dampingFactor = 0.05;
-    this.controls.rotateSpeed = 0.85;
-    this.controls.zoomSpeed = 0.8;
-    this.controls.minDistance = 2.0;
-    this.controls.maxDistance = 6.2;
-    this.controls.maxPolarAngle = Math.PI * 0.82; // Bound vertical tilt
-    this.controls.minPolarAngle = Math.PI * 0.18;
-    this.controls.autoRotate = this.isAutoRotate;
-    this.controls.autoRotateSpeed = 2.0;
-    this.controls.target.copy(this.defaultTarget);
-
-    // Studio Lights
-    this.setupLighting();
-  }
-
-  setupLighting() {
-    this.lightsGroup = new THREE.Group();
-    this.scene.add(this.lightsGroup);
-
-    // Ambient
-    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
-    this.lightsGroup.add(this.ambientLight);
-
-    // Main Studio Key Light
-    this.keyLight = new THREE.DirectionalLight(0xfff8ee, 1.6);
-    this.keyLight.position.set(3, 4, 4);
-    this.keyLight.castShadow = true;
-    this.keyLight.shadow.mapSize.width = 1024;
-    this.keyLight.shadow.mapSize.height = 1024;
-    this.lightsGroup.add(this.keyLight);
-
-    // Fill Light
-    this.fillLight = new THREE.DirectionalLight(0xe8f0ea, 0.9);
-    this.fillLight.position.set(-3, 2, 3);
-    this.lightsGroup.add(this.fillLight);
-
-    // Rim Backlight (Highlighting cloth silhouette)
-    this.rimLight = new THREE.DirectionalLight(0xfff5e6, 1.2);
-    this.rimLight.position.set(0, 3, -4);
-    this.lightsGroup.add(this.rimLight);
-  }
-
-  build3DGarment() {
-    this.modelGroup = new THREE.Group();
-    this.scene.add(this.modelGroup);
-
-    const textureLoader = new THREE.TextureLoader();
-
-    // 1. Front High-Res Texture
-    const frontTex = textureLoader.load('assets/romper_front_cutout.png', () => {
-      this.renderer.render(this.scene, this.camera);
-    });
-    frontTex.colorSpace = THREE.SRGBColorSpace;
-
-    // 2. Back High-Res Texture
-    const backTex = textureLoader.load('assets/romper_back_cutout.png', () => {
-      this.renderer.render(this.scene, this.camera);
-    });
-    backTex.colorSpace = THREE.SRGBColorSpace;
-
-    const W = 2.2;
-    const H = 2.6;
-    const segX = 48;
-    const segY = 48;
-
-    // A. Front Curved 3D Shell
-    const frontGeo = new THREE.PlaneGeometry(W, H, segX, segY);
-    const pos = frontGeo.attributes.position;
-    for (let i = 0; i < pos.count; i++) {
-      const x = pos.getX(i);
-      const y = pos.getY(i);
-      const nx = x / (W * 0.5);
-      const ny = y / (H * 0.5);
-      const radX = 1 - Math.min(1, Math.abs(nx));
-      const radY = Math.max(0, 1 - Math.abs(ny - 0.15));
-      let z = 0.20 * Math.sin(radX * Math.PI * 0.5) * Math.sin(radY * Math.PI * 0.5);
-      if (y > 0 && y < 0.75) z += 0.03 * (1 - Math.abs(nx)); // Soft chest volume
-      pos.setZ(i, z);
-    }
-    frontGeo.computeVertexNormals();
-
-    const frontMat = new THREE.MeshStandardMaterial({
-      map: frontTex,
-      transparent: true,
-      alphaTest: 0.18,
-      roughness: 0.82,
-      metalness: 0.04,
-      side: THREE.FrontSide
-    });
-    this.frontMesh = new THREE.Mesh(frontGeo, frontMat);
-    this.frontMesh.castShadow = true;
-    this.modelGroup.add(this.frontMesh);
-
-    // B. Back Curved 3D Shell
-    const backGeo = new THREE.PlaneGeometry(W, H, segX, segY);
-    const bPos = backGeo.attributes.position;
-    for (let i = 0; i < bPos.count; i++) {
-      const x = bPos.getX(i);
-      const y = bPos.getY(i);
-      const nx = x / (W * 0.5);
-      const ny = y / (H * 0.5);
-      const radX = 1 - Math.min(1, Math.abs(nx));
-      const radY = Math.max(0, 1 - Math.abs(ny - 0.15));
-      let z = -0.18 * Math.sin(radX * Math.PI * 0.5) * Math.sin(radY * Math.PI * 0.5);
-      if (y < 0 && y > -0.6) z -= 0.04 * (1 - Math.abs(nx)); // Diaper seat volume
-      bPos.setZ(i, z);
-    }
-    backGeo.computeVertexNormals();
-
-    const backMat = new THREE.MeshStandardMaterial({
-      map: backTex,
-      transparent: true,
-      alphaTest: 0.18,
-      roughness: 0.82,
-      metalness: 0.04,
-      side: THREE.FrontSide
-    });
-    this.backMesh = new THREE.Mesh(backGeo, backMat);
-    this.backMesh.rotation.y = Math.PI;
-    this.backMesh.castShadow = true;
-    this.modelGroup.add(this.backMesh);
-
-    // C. Volumetric Cotton Inner Core (Prevents see-through hollow gaps from profile angles)
-    const coreGeo = new THREE.CylinderGeometry(0.48, 0.52, 1.4, 24, 8);
-    const coreMat = new THREE.MeshStandardMaterial({
-      color: 0x829480, // Rich Sage Green
-      roughness: 0.9,
-      metalness: 0.02
-    });
-    this.coreMesh = new THREE.Mesh(coreGeo, coreMat);
-    this.coreMesh.position.set(0, 0.1, 0);
-    this.coreMesh.scale.set(1.0, 1.0, 0.32);
-    this.modelGroup.add(this.coreMesh);
-
-    // D. 3D Ribbed Neckline Collar Torus
-    const collarGeo = new THREE.TorusGeometry(0.32, 0.038, 16, 32);
-    const collarMat = new THREE.MeshStandardMaterial({
-      color: 0x8a9c88,
-      roughness: 0.88
-    });
-    const collarMesh = new THREE.Mesh(collarGeo, collarMat);
-    collarMesh.position.set(0, 0.82, 0.18);
-    collarMesh.rotation.x = Math.PI * 0.42;
-    this.modelGroup.add(collarMesh);
-
-    // E. 3D Embossed Cactus Badge with Gold Rim
-    const badgeGeo = new THREE.CylinderGeometry(0.098, 0.098, 0.018, 32);
-    const badgeMat = new THREE.MeshStandardMaterial({
-      color: 0x879784,
-      roughness: 0.55,
-      metalness: 0.15
-    });
-    const badgeMesh = new THREE.Mesh(badgeGeo, badgeMat);
-    badgeMesh.position.set(0.24, 0.58, 0.24);
-    badgeMesh.rotation.x = Math.PI * 0.5;
-    this.modelGroup.add(badgeMesh);
-
-    // F. 3D Metallic Crotch Snaps
-    const snapGeo = new THREE.CylinderGeometry(0.036, 0.036, 0.012, 16);
-    const snapMat = new THREE.MeshStandardMaterial({
-      color: 0xd6cbbd, // Champagne Nickel YKK
-      metalness: 0.88,
-      roughness: 0.22
-    });
-    const snapPositions = [
-      [0, -0.48, 0.16],
-      [-0.08, -0.56, 0.15],
-      [0.08, -0.56, 0.15],
-      [-0.14, -0.68, 0.13],
-      [0.14, -0.68, 0.13]
-    ];
-    snapPositions.forEach(posArr => {
-      const snap = new THREE.Mesh(snapGeo, snapMat);
-      snap.position.set(posArr[0], posArr[1], posArr[2]);
-      snap.rotation.x = Math.PI * 0.5;
-      this.modelGroup.add(snap);
-    });
-
-    // G. 3D Rolled Sleeve Cuffs
-    const cuffGeo = new THREE.TorusGeometry(0.16, 0.042, 14, 24);
-    const cuffMat = new THREE.MeshStandardMaterial({ color: 0x849682, roughness: 0.85 });
-    
-    const leftCuff = new THREE.Mesh(cuffGeo, cuffMat);
-    leftCuff.position.set(-0.92, 0.22, 0.10);
-    leftCuff.rotation.set(0.2, 0.4, 0.5);
-    this.modelGroup.add(leftCuff);
-
-    const rightCuff = new THREE.Mesh(cuffGeo, cuffMat);
-    rightCuff.position.set(0.92, 0.22, 0.10);
-    rightCuff.rotation.set(0.2, -0.4, -0.5);
-    this.modelGroup.add(rightCuff);
-
-    // H. Soft Ground Shadow Plane
-    const shadowGeo = new THREE.PlaneGeometry(3.0, 3.0);
-    const shadowCanvas = document.createElement('canvas');
-    shadowCanvas.width = 128;
-    shadowCanvas.height = 128;
-    const sCtx = shadowCanvas.getContext('2d');
-    const grad = sCtx.createRadialGradient(64, 64, 0, 64, 64, 64);
-    grad.addColorStop(0, 'rgba(20, 25, 20, 0.32)');
-    grad.addColorStop(0.4, 'rgba(20, 25, 20, 0.15)');
-    grad.addColorStop(1, 'rgba(20, 25, 20, 0)');
-    sCtx.fillStyle = grad;
-    sCtx.fillRect(0, 0, 128, 128);
-
-    const shadowTex = new THREE.CanvasTexture(shadowCanvas);
-    const shadowMat = new THREE.MeshBasicMaterial({
-      map: shadowTex,
-      transparent: true,
-      depthWrite: false
-    });
-    const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
-    shadowPlane.position.set(0, -1.48, 0);
-    shadowPlane.rotation.x = -Math.PI * 0.5;
-    this.scene.add(shadowPlane);
-  }
-
-  initHotspots() {
-    this.hotspotElements = [];
-
-    this.hotspots.forEach(spot => {
-      const el = document.createElement('button');
-      el.className = 'haute-jewelry-hotspot';
-      el.id = `hotspot-${spot.id}`;
-      el.setAttribute('aria-label', `${spot.num} ${spot.title}`);
-      el.innerHTML = `
-        <span class="hotspot-pulse-ring"></span>
-        <span class="hotspot-core-gem">${spot.num}</span>
-      `;
-
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.selectHotspot(spot);
-      });
-
-      this.container.appendChild(el);
-      this.hotspotElements.push({ spot, el });
-    });
-
-    // Close Placard & Reset Macro Zoom
-    const closeBtn = this.placard.querySelector('#placardCloseBtn');
-    if (closeBtn) {
-      closeBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.resetMacroZoom();
-      });
-    }
-
-    this.container.addEventListener('click', (e) => {
-      if (this.isZoomed && !e.target.closest('.haute-specimen-placard') && !e.target.closest('.haute-jewelry-hotspot')) {
-        this.resetMacroZoom();
-      }
-    });
-  }
-
-  updateHotspots() {
-    if (!this.hotspotElements || !this.camera || !this.modelGroup) return;
-
-    const camDir = new THREE.Vector3();
-    this.camera.getWorldDirection(camDir);
-
-    const wp = new THREE.Vector3();
-    const wn = new THREE.Vector3();
-
-    this.hotspotElements.forEach(({ spot, el }) => {
-      // Transform spot position and normal with model transform
-      wp.copy(spot.pos).applyMatrix4(this.modelGroup.matrixWorld);
-      wn.copy(spot.normal).transformDirection(this.modelGroup.matrixWorld);
-
-      // Project 3D coordinate to screen
-      const screenPos = wp.clone().project(this.camera);
-
-      // Check if visible (in front of camera and normal facing towards camera)
-      const dot = wn.dot(camDir.clone().negate());
-      const isFacing = dot > -0.15;
-      const isInFrustum = screenPos.z > -1 && screenPos.z < 1;
-
-      if (isFacing && isInFrustum) {
-        const x = (screenPos.x * 0.5 + 0.5) * this.width;
-        const y = (-(screenPos.y * 0.5) + 0.5) * this.height;
-
-        el.style.left = `${x}px`;
-        el.style.top = `${y}px`;
-        el.style.opacity = Math.max(0, Math.min(1, (dot + 0.15) * 1.5));
-        el.style.pointerEvents = 'auto';
-      } else {
-        el.style.opacity = '0';
-        el.style.pointerEvents = 'none';
-      }
-    });
-  }
-
-  selectHotspot(spot) {
-    this.isZoomed = true;
-    this.activeHotspotId = spot.id;
-    this.controls.autoRotate = false;
-
-    const btnRotate = this.container.querySelector('#btnThreeRotate');
-    if (btnRotate) {
-      btnRotate.classList.remove('active');
-      btnRotate.textContent = '⏸ 정지됨';
-    }
-
-    // Smooth Dolly-Zoom Camera to Detail
-    if (window.gsap) {
-      gsap.to(this.camera.position, {
-        duration: 1.2,
-        x: spot.targetCam.x,
-        y: spot.targetCam.y,
-        z: spot.targetCam.z,
-        ease: 'power2.out'
-      });
-
-      gsap.to(this.controls.target, {
-        duration: 1.2,
-        x: spot.targetLook.x,
-        y: spot.targetLook.y,
-        z: spot.targetLook.z,
-        ease: 'power2.out'
-      });
-    }
-
-    // Populate Specimen Placard
-    this.placard.querySelector('#placardNum').textContent = `DETAIL ${spot.num}`;
-    this.placard.querySelector('#placardTitle').textContent = spot.title;
-    this.placard.querySelector('#placardSub').textContent = spot.sub;
-    this.placard.querySelector('#placardDesc').textContent = spot.desc;
-
-    const specsWrap = this.placard.querySelector('#placardSpecs');
-    specsWrap.innerHTML = spot.specs.map(s => `
-      <div class="placard-spec-tag">
-        <span class="spec-bullet">✦</span>
-        <span>${s}</span>
-      </div>
-    `).join('');
-
-    this.placard.classList.add('active');
-  }
-
-  resetMacroZoom() {
-    this.isZoomed = false;
-    this.activeHotspotId = null;
-    this.placard.classList.remove('active');
-
-    if (window.gsap) {
-      gsap.to(this.camera.position, {
-        duration: 1.0,
-        x: this.defaultCamPos.x,
-        y: this.defaultCamPos.y,
-        z: this.defaultCamPos.z,
-        ease: 'power2.out'
-      });
-
-      gsap.to(this.controls.target, {
-        duration: 1.0,
-        x: this.defaultTarget.x,
-        y: this.defaultTarget.y,
-        z: this.defaultTarget.z,
-        ease: 'power2.out'
-      });
-    } else {
-      this.camera.position.copy(this.defaultCamPos);
-      this.controls.target.copy(this.defaultTarget);
-    }
-  }
-
-  trigger3DScanAnimation() {
+  triggerLaserScan() {
     if (!this.scannerOverlay) return;
     const beam = this.scannerOverlay.querySelector('.scanner-beam');
     const pct = this.scannerOverlay.querySelector('#scannerPct');
 
     if (window.gsap) {
       const tl = gsap.timeline();
-      tl.to(beam, {
-        duration: 1.4,
-        top: '100%',
-        ease: 'power1.inOut'
-      });
-      tl.to({ val: 0 }, {
-        duration: 1.4,
-        val: 100,
+      tl.to(beam, { duration: 1.1, top: '100%', ease: 'power1.inOut' });
+      tl.to({ v: 0 }, {
+        duration: 1.1,
+        v: 100,
         ease: 'none',
         onUpdate: function() {
-          if (pct) pct.textContent = `${Math.round(this.targets()[0].val)}%`;
+          if (pct) pct.textContent = `${Math.round(this.targets()[0].v)}%`;
         }
       }, 0);
       tl.to(this.scannerOverlay, {
-        duration: 0.6,
+        duration: 0.4,
         opacity: 0,
+        delay: 0.1,
         onComplete: () => {
           this.scannerOverlay.style.display = 'none';
         }
@@ -640,188 +339,410 @@ class Romper3DViewer {
     } else {
       setTimeout(() => {
         this.scannerOverlay.style.display = 'none';
-      }, 1500);
+      }, 1200);
     }
   }
 
-  bindControlsEvents() {
-    // 1. Auto-Rotate Toggle
-    const btnRotate = this.container.querySelector('#btnThreeRotate');
-    if (btnRotate) {
-      btnRotate.addEventListener('click', () => {
-        this.isAutoRotate = !this.isAutoRotate;
-        this.controls.autoRotate = this.isAutoRotate;
-        btnRotate.classList.toggle('active', this.isAutoRotate);
-        btnRotate.textContent = this.isAutoRotate ? '⏵ 회전 중' : '⏸ 정지됨';
-      });
-    }
-
-    // 2. Speed Cycle (1.0x -> 1.5x -> 2.0x -> 0.5x)
-    const btnSpeed = this.container.querySelector('#btnThreeSpeed');
-    const speeds = [1.0, 1.5, 2.0, 0.5];
-    let speedIdx = 0;
-    if (btnSpeed) {
-      btnSpeed.addEventListener('click', () => {
-        speedIdx = (speedIdx + 1) % speeds.length;
-        this.rotateSpeed = speeds[speedIdx];
-        this.controls.autoRotateSpeed = 2.0 * this.rotateSpeed;
-        btnSpeed.textContent = `${this.rotateSpeed.toFixed(1)}x`;
-      });
-    }
-
-    // 3. Studio Lighting Toggle
-    const btnLighting = this.container.querySelector('#btnThreeLighting');
-    const lightingModes = [
-      { id: 'studio', label: '💡 스튜디오', keyColor: 0xfff8ee, keyInt: 1.6, fillInt: 0.9, rimInt: 1.2 },
-      { id: 'runway', label: '💡 런웨이', keyColor: 0xffffff, keyInt: 2.2, fillInt: 0.4, rimInt: 2.4 },
-      { id: 'sunset', label: '💡 웜 선셋', keyColor: 0xffd1a4, keyInt: 1.8, fillInt: 1.1, rimInt: 1.5 }
-    ];
-    let lightIdx = 0;
-    if (btnLighting) {
-      btnLighting.addEventListener('click', () => {
-        lightIdx = (lightIdx + 1) % lightingModes.length;
-        const mode = lightingModes[lightIdx];
-        btnLighting.textContent = mode.label;
-
-        if (window.gsap) {
-          gsap.to(this.keyLight, { duration: 0.8, intensity: mode.keyInt });
-          gsap.to(this.fillLight, { duration: 0.8, intensity: mode.fillInt });
-          gsap.to(this.rimLight, { duration: 0.8, intensity: mode.rimInt });
-          this.keyLight.color.setHex(mode.keyColor);
-        } else {
-          this.keyLight.intensity = mode.keyInt;
-          this.fillLight.intensity = mode.fillInt;
-          this.rimLight.intensity = mode.rimInt;
-          this.keyLight.color.setHex(mode.keyColor);
+  // ================= FRAME PRELOADING =================
+  preloadAllFrames() {
+    for (let i = 0; i < this.totalFrames; i++) {
+      const img = new Image();
+      img.onload = () => {
+        this.loadedImages[i] = img;
+        this.imagesLoadedCount++;
+        if (i === 0 && this.lastDrawnIndex === -1) {
+          this.drawFrame(0);
         }
-      });
+      };
+      img.onerror = () => {
+        this.loadedImages[i] = this.loadedImages[0] || null;
+      };
+      img.src = this.frameUrls[i];
     }
+  }
 
-    // 4. Reset View
-    const btnReset = this.container.querySelector('#btnThreeReset');
-    if (btnReset) {
-      btnReset.addEventListener('click', () => {
-        this.resetMacroZoom();
-        this.orbitToAngle(0);
-      });
+  drawFrame(index) {
+    const img = this.loadedImages[index] || this.loadedImages[0];
+    if (!img) return;
+
+    this.ctx.drawImage(img, 0, 0, 1024, 1024);
+    this.lastDrawnIndex = index;
+  }
+
+  // ================= PHYSICS & RENDER LOOP =================
+  startPhysicsLoop() {
+    const tick = (time, deltaTime) => {
+      const dt = Math.min((deltaTime ? deltaTime / 1000 : 0.016), 0.1);
+
+      // 1. Auto-rotation
+      if (this.isAutoRotate && !this.isDragging && !this.isScrubbing && !this.isZoomed) {
+        const speedDeg = 24 * this.rotateSpeed; // 24 deg/s
+        this.targetAngle += speedDeg * dt;
+      }
+
+      // 2. Exponential Physics Damping (Lerp factor 0.3)
+      const diff = this.targetAngle - this.currentAngle;
+      if (Math.abs(diff) > 0.001) {
+        this.currentAngle += diff * 0.3;
+      }
+
+      // 3. Continuous wrapped angle & frame calculation (72 frames = 5.0 deg each)
+      const normAngle = ((this.currentAngle % 360) + 360) % 360;
+      const frameIndex = Math.round(normAngle / this.degreesPerFrame) % this.totalFrames;
+
+      // 4. Draw frame ONLY when index changes (Zero-GC optimization)
+      if (frameIndex !== this.lastDrawnIndex) {
+        this.drawFrame(frameIndex);
+      }
+
+      // 5. Update UI & Hotspots
+      this.updateHotspots(normAngle);
+      this.updateScrubberUI(normAngle);
+    };
+
+    if (window.gsap && gsap.ticker) {
+      gsap.ticker.add(tick);
+    } else {
+      let lastTime = performance.now();
+      const rAF = (now) => {
+        const dtMs = now - lastTime;
+        lastTime = now;
+        tick(now / 1000, dtMs);
+        requestAnimationFrame(rAF);
+      };
+      requestAnimationFrame(rAF);
     }
+  }
 
-    // 5. Lookbook Presets
-    const presetBtns = this.dialContainer.querySelectorAll('.bezel-preset-btn');
-    presetBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        const deg = parseFloat(btn.dataset.deg || 0);
-        this.orbitToAngle(deg);
-      });
+  updateHotspots(normAngle) {
+    this.hotspots.forEach(hp => {
+      const el = this.hotspotElements[hp.id];
+      if (!el) return;
+
+      // Calculate angular distance to optimal viewing angle
+      let angleDist = Math.abs(normAngle - hp.targetAngle);
+      if (angleDist > 180) angleDist = 360 - angleDist;
+
+      // Hotspot is visible within 65 degrees of target angle
+      const isVisible = angleDist <= 65;
+
+      if (isVisible !== hp.lastVisible) {
+        hp.lastVisible = isVisible;
+        if (isVisible) {
+          el.style.opacity = '1';
+          el.style.pointerEvents = 'auto';
+          el.style.transform = 'translate(-50%, -50%) scale(1)';
+        } else {
+          el.style.opacity = '0';
+          el.style.pointerEvents = 'none';
+          el.style.transform = 'translate(-50%, -50%) scale(0.6)';
+        }
+      }
     });
   }
 
-  orbitToAngle(targetDeg) {
-    if (this.isZoomed) this.resetMacroZoom();
+  updateScrubberUI(normAngle) {
+    const rounded = Math.round(normAngle);
+    if (rounded === this.lastRoundedAngle) return;
+    this.lastRoundedAngle = rounded;
 
-    // Compute target camera position in orbit circle at radius 4.2
-    const rad = (targetDeg * Math.PI) / 180;
-    const r = this.defaultCamPos.length();
+    // 1. Scrubber Degree Display
+    if (this.scrubberDisplay) {
+      this.scrubberDisplay.textContent = `${rounded}°`;
+    }
 
-    const targetX = r * Math.sin(rad);
-    const targetZ = r * Math.cos(rad);
-    const targetY = 0;
+    // 2. Range Input Value
+    if (this.scrubberInput && !this.isScrubbing) {
+      this.scrubberInput.value = rounded;
+    }
+
+    // 3. Lookbook Angle Header Badge Text
+    const nearestPreset = Math.round(rounded / 45) * 45 % 360;
+    const viewName = this.angleNames[nearestPreset] || `${rounded}° 시점`;
+    if (this.angleBadgeText) {
+      this.angleBadgeText.textContent = `${viewName} (${rounded}°)`;
+    }
+    if (this.scrubberViewBadge) {
+      this.scrubberViewBadge.textContent = `${viewName} (${rounded}°)`;
+    }
+
+    // 4. Highlight Preset Buttons
+    if (this.presetBtns) {
+      this.presetBtns.forEach(btn => {
+        const bDeg = parseInt(btn.getAttribute('data-angle'), 10);
+        const isCurrent = Math.abs(rounded - bDeg) < 15 || (bDeg === 0 && rounded > 345);
+        btn.classList.toggle('active', isCurrent);
+      });
+    }
+  }
+
+  // ================= MACRO DOLLY-ZOOM HOTSPOTS =================
+  focusOnHotspot(hp) {
+    this.isZoomed = true;
+    this.activeHotspotId = hp.id;
+    this.isAutoRotate = false;
+    this.updateRotateButtonUI();
+
+    // Smoothly glide angle to detail orientation
+    const norm = ((this.targetAngle % 360) + 360) % 360;
+    let shortestDelta = hp.targetAngle - norm;
+    if (shortestDelta > 180) shortestDelta -= 360;
+    if (shortestDelta < -180) shortestDelta += 360;
+    this.targetAngle += shortestDelta;
+
+    // Macro Dolly Zoom
+    this.stage.style.transformOrigin = hp.zoomOrigin;
+    if (window.gsap) {
+      gsap.to(this.stage, {
+        scale: hp.zoomScale,
+        duration: 0.8,
+        ease: 'expo.out'
+      });
+    } else {
+      this.stage.style.transform = `scale(${hp.zoomScale})`;
+    }
+
+    // Populate Specimen Placard
+    this.placard.querySelector('#placardNum').textContent = `DETAIL ${hp.num}`;
+    this.placard.querySelector('#placardTitle').textContent = hp.title;
+    this.placard.querySelector('#placardSub').textContent = hp.sub;
+    this.placard.querySelector('#placardDesc').textContent = hp.desc;
+
+    const specsEl = this.placard.querySelector('#placardSpecs');
+    specsEl.innerHTML = '';
+    hp.specs.forEach(spec => {
+      const li = document.createElement('li');
+      li.textContent = spec;
+      specsEl.appendChild(li);
+    });
+
+    this.placard.classList.add('active');
+  }
+
+  resetZoom() {
+    this.isZoomed = false;
+    this.activeHotspotId = null;
 
     if (window.gsap) {
-      gsap.to(this.camera.position, {
-        duration: 1.0,
-        x: targetX,
-        y: targetY,
-        z: targetZ,
-        ease: 'power2.inOut',
-        onUpdate: () => {
-          this.controls.update();
+      gsap.to(this.stage, {
+        scale: 1,
+        duration: 0.7,
+        ease: 'power3.out',
+        onComplete: () => {
+          this.stage.style.transformOrigin = '50% 50%';
         }
       });
     } else {
-      this.camera.position.set(targetX, targetY, targetZ);
-      this.controls.update();
+      this.stage.style.transform = 'scale(1)';
+    }
+
+    this.placard.classList.remove('active');
+  }
+
+  rotateToAngleSmooth(targetPreset) {
+    const norm = ((this.targetAngle % 360) + 360) % 360;
+    let delta = targetPreset - norm;
+    if (delta > 180) delta -= 360;
+    if (delta < -180) delta += 360;
+
+    if (window.gsap) {
+      gsap.to(this, {
+        targetAngle: this.targetAngle + delta,
+        duration: 0.85,
+        ease: 'power3.inOut'
+      });
+    } else {
+      this.targetAngle += delta;
     }
   }
 
-  updateDial() {
-    if (!this.camera) return;
+  cycleLighting() {
+    const modes = [
+      { id: 'studio', label: '💡 스튜디오', filter: 'brightness(1) contrast(1.02)' },
+      { id: 'runway', label: '💡 런웨이', filter: 'brightness(1.08) contrast(1.18) saturate(1.06)' },
+      { id: 'sunset', label: '💡 웜 선셋', filter: 'brightness(1.04) contrast(1.05) sepia(0.22) saturate(1.15)' }
+    ];
 
-    // Calculate current azimuth angle from camera position
-    let angleRad = Math.atan2(this.camera.position.x, this.camera.position.z);
-    let angleDeg = (angleRad * 180) / Math.PI;
-    if (angleDeg < 0) angleDeg += 360;
+    let nextIdx = 0;
+    if (this.currentLighting === 'studio') nextIdx = 1;
+    else if (this.currentLighting === 'runway') nextIdx = 2;
+    else nextIdx = 0;
 
-    const roundedDeg = Math.round(angleDeg);
+    const selected = modes[nextIdx];
+    this.currentLighting = selected.id;
+    this.btnLight.innerHTML = `<span>${selected.label}</span>`;
 
-    // Update Bezel Value
-    const valText = this.dialContainer.querySelector('#bezelValueText');
-    if (valText) valText.textContent = `${roundedDeg}°`;
-
-    // Move Bezel Track
-    const track = this.dialContainer.querySelector('#bezelTrack');
-    if (track) {
-      const offsetPct = (roundedDeg / 360) * 100;
-      track.style.transform = `translateX(calc(50% - ${offsetPct}%))`;
+    if (window.gsap) {
+      gsap.to(this.canvas, {
+        filter: selected.filter,
+        duration: 0.45,
+        ease: 'sine.out'
+      });
+    } else {
+      this.canvas.style.filter = selected.filter;
     }
-
-    // Update Lookbook Badge Header Text
-    const nearestPreset = Math.round(roundedDeg / 45) * 45 % 360;
-    const viewName = this.angleNames[nearestPreset] || `${roundedDeg}° 시점`;
-    const angleBadgeText = this.container.querySelector('#threeAngleText');
-    if (angleBadgeText) {
-      angleBadgeText.textContent = `${viewName} (${roundedDeg}°)`;
-    }
-
-    // Highlight Preset Buttons
-    const presetBtns = this.dialContainer.querySelectorAll('.bezel-preset-btn');
-    presetBtns.forEach(btn => {
-      const bDeg = parseInt(btn.dataset.deg, 10);
-      const isCurrent = Math.abs(roundedDeg - bDeg) < 15 || (bDeg === 0 && roundedDeg > 345);
-      btn.classList.toggle('active', isCurrent);
-    });
   }
 
-  animate() {
-    this.animId = requestAnimationFrame(() => this.animate());
-
-    // Update OrbitControls
-    if (this.controls) {
-      this.controls.update();
+  updateRotateButtonUI() {
+    if (this.btnRotate) {
+      this.btnRotate.classList.toggle('active', this.isAutoRotate);
+      this.btnRotate.innerHTML = this.isAutoRotate ? '<span>⏵ 회전 중</span>' : '<span>⏸ 정지됨</span>';
     }
+  }
 
-    // Update Precision Dial
-    this.updateDial();
-
-    // Update 3D Floating Hotspots
-    this.updateHotspots();
-
-    // Render 3D Scene
-    if (this.renderer && this.scene && this.camera) {
-      this.renderer.render(this.scene, this.camera);
+  setColor(colorKey) {
+    this.currentColor = colorKey;
+    const filter = (colorKey === 'beige') 
+      ? 'sepia(0.28) saturate(0.82) brightness(1.08)' 
+      : 'brightness(1) contrast(1.02)';
+    if (window.gsap) {
+      gsap.to(this.canvas, { filter: filter, duration: 0.4 });
+    } else {
+      this.canvas.style.filter = filter;
     }
   }
 
   onResize() {
-    if (!this.container || !this.renderer || !this.camera) return;
-    this.width = this.container.clientWidth || 500;
-    this.height = this.container.clientHeight || 500;
-
-    this.camera.aspect = this.width / this.height;
-    this.camera.updateProjectionMatrix();
-
-    this.renderer.setSize(this.width, this.height);
+    if (this.lastDrawnIndex >= 0) {
+      this.drawFrame(this.lastDrawnIndex);
+    }
   }
 
-  setColor(color) {
-    // Both sage green and beige can be tinted if needed
-    if (this.coreMesh) {
-      if (color === 'beige') {
-        this.coreMesh.material.color.setHex(0xbab09c);
-      } else {
-        this.coreMesh.material.color.setHex(0x829480);
+  // ================= DIRECT KINETIC INTERACTION HANDLERS =================
+  setupInteractions() {
+    const onStart = (clientX) => {
+      if (this.isZoomed) return;
+      this.isDragging = true;
+      this.dragStartX = clientX;
+      this.dragStartAngle = this.targetAngle;
+      this.lastMoveX = clientX;
+      this.lastMoveTime = performance.now();
+      this.velocity = 0;
+      this.canvas.style.cursor = 'grabbing';
+      if (window.gsap) gsap.killTweensOf(this);
+    };
+
+    const onMove = (clientX) => {
+      if (!this.isDragging) return;
+      const now = performance.now();
+      const dt = Math.max(now - this.lastMoveTime, 1);
+      const dx = clientX - this.lastMoveX;
+      this.velocity = (dx / dt);
+      this.lastMoveX = clientX;
+      this.lastMoveTime = now;
+
+      const totalDelta = clientX - this.dragStartX;
+      this.targetAngle = this.dragStartAngle - (totalDelta * this.sensitivity);
+    };
+
+    const onEnd = () => {
+      if (!this.isDragging) return;
+      this.isDragging = false;
+      this.canvas.style.cursor = 'grab';
+
+      // Kinetic Inertia Coasting
+      if (Math.abs(this.velocity) > 0.2) {
+        const momentumDeg = -this.velocity * 90;
+        this.targetAngle += momentumDeg;
       }
+    };
+
+    // Modern Unified Pointer Events with setPointerCapture (100% Reliable Everywhere)
+    this.canvas.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 && e.pointerType === 'mouse') return;
+      try { this.canvas.setPointerCapture(e.pointerId); } catch(err) {}
+      onStart(e.clientX);
+    });
+
+    this.canvas.addEventListener('pointermove', (e) => {
+      onMove(e.clientX);
+    });
+
+    const finishPointer = (e) => {
+      try { this.canvas.releasePointerCapture(e.pointerId); } catch(err) {}
+      onEnd();
+    };
+
+    this.canvas.addEventListener('pointerup', finishPointer);
+    this.canvas.addEventListener('pointercancel', finishPointer);
+
+    // Global Window Fallback Listeners
+    window.addEventListener('pointermove', (e) => {
+      if (this.isDragging) onMove(e.clientX);
+    });
+    window.addEventListener('pointerup', () => {
+      if (this.isDragging) onEnd();
+    });
+
+    // Precision Scrubber Input
+    this.isScrubbing = false;
+    this.scrubberInput.addEventListener('pointerdown', () => {
+      this.isScrubbing = true;
+      this.isAutoRotate = false;
+      this.updateRotateButtonUI();
+      if (window.gsap) gsap.killTweensOf(this);
+    });
+
+    window.addEventListener('pointerup', () => {
+      this.isScrubbing = false;
+    });
+
+    this.scrubberInput.addEventListener('input', (e) => {
+      const deg = parseFloat(e.target.value);
+      this.targetAngle = deg;
+    });
+
+    // Quick Angle Preset Buttons
+    this.presetBtns.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.resetZoom();
+        const angle = parseFloat(btn.getAttribute('data-angle'));
+        this.rotateToAngleSmooth(angle);
+      });
+    });
+
+    // Floating Bar Buttons
+    this.btnRotate.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.isAutoRotate = !this.isAutoRotate;
+      if (this.isAutoRotate && this.isZoomed) this.resetZoom();
+      this.updateRotateButtonUI();
+    });
+
+    const speeds = [1.0, 1.5, 2.0, 0.5];
+    let spIdx = 0;
+    this.btnSpeed.addEventListener('click', (e) => {
+      e.stopPropagation();
+      spIdx = (spIdx + 1) % speeds.length;
+      this.rotateSpeed = speeds[spIdx];
+      this.btnSpeed.textContent = `${this.rotateSpeed.toFixed(1)}x`;
+    });
+
+    this.btnLight.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.cycleLighting();
+    });
+
+    this.btnReset.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.resetZoom();
+      this.rotateToAngleSmooth(0);
+      this.isAutoRotate = true;
+      this.updateRotateButtonUI();
+    });
+
+    // Placard Close & Canvas Click
+    if (this.btnPlacardClose) {
+      this.btnPlacardClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.resetZoom();
+      });
     }
+
+    this.canvas.addEventListener('click', () => {
+      if (this.isZoomed) this.resetZoom();
+    });
   }
 }
 
